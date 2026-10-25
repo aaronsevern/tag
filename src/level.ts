@@ -73,9 +73,9 @@ export const ARENA: LevelDef = {
   // Pads centred at 1/4 and ~1/2 of the screen height.
   wallTrampolines: [
     { side: 'left', y: 132 },
-    { side: 'left', y: 340 },
+    { side: 'left', y: 400 },
     { side: 'right', y: 132 },
-    { side: 'right', y: 340 },
+    { side: 'right', y: 400 },
   ],
   spawns: [
     { x: 200, y: 640 },
