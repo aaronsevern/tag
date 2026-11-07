@@ -1,16 +1,15 @@
 import Phaser from 'phaser';
 import {
-  PLAYER_SIZE,
   PORTAL_COLORS,
   PORTAL_RADIUS,
   PORTAL_SPAWN_MAX_MS,
   PORTAL_SPAWN_MIN_MS,
 } from '../config';
-import { TRAMPOLINE_WIDTH, type LevelDef } from '../level';
+import type { LevelDef } from '../level';
 import type { Player } from './Player';
+import { pickSpot } from './spawnSpot';
 
 const MIN_PORTAL_GAP = 300;
-const MIN_PLAYER_GAP = 90;
 
 /**
  * Spawns one pair of linked portals at a time at random spots on platforms.
@@ -61,8 +60,8 @@ export class Portals {
   }
 
   private spawn(players: Player[]): void {
-    const a = this.pickSpot(players, []);
-    const b = a && this.pickSpot(players, [a]);
+    const a = pickSpot(this.level, players, PORTAL_RADIUS);
+    const b = a && pickSpot(this.level, players, PORTAL_RADIUS, [a], MIN_PORTAL_GAP);
     if (!a || !b) {
       // Crowded arena; try again shortly.
       this.nextSpawnAt = this.scene.time.now + 1000;
@@ -84,21 +83,6 @@ export class Portals {
       this.burst(spot.x, spot.y, PORTAL_COLORS[i]);
       return portal;
     });
-  }
-
-  /** Random point just above a platform, clear of players, trampolines and other portals. */
-  private pickSpot(players: Player[], taken: Phaser.Math.Vector2[]): Phaser.Math.Vector2 | undefined {
-    const floorTrampolines = this.level.trampolines.map((t) => t.x + TRAMPOLINE_WIDTH / 2);
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const plat = Phaser.Utils.Array.GetRandom(this.level.platforms);
-      const x = Phaser.Math.Between(plat.x + PORTAL_RADIUS + 10, plat.x + plat.w - PORTAL_RADIUS - 10);
-      const y = plat.y - PLAYER_SIZE / 2 - 4;
-      if (plat.solid && floorTrampolines.some((tx) => Math.abs(tx - x) < TRAMPOLINE_WIDTH)) continue;
-      if (players.some((p) => Phaser.Math.Distance.Between(p.x, p.y, x, y) < MIN_PLAYER_GAP)) continue;
-      if (taken.some((t) => Phaser.Math.Distance.Between(t.x, t.y, x, y) < MIN_PORTAL_GAP)) continue;
-      return new Phaser.Math.Vector2(x, y);
-    }
-    return undefined;
   }
 
   private close(now: number): void {

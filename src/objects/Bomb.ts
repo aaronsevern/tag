@@ -32,7 +32,7 @@ export class Bomb {
     this.t += deltaMs;
     const bob = Math.sin(this.t / 180) * 3;
     const tx = this.target.x;
-    const ty = this.target.y - OFFSET_Y + bob;
+    const ty = this.target.y - OFFSET_Y * this.target.sizeScale + bob;
     // Ease toward the target so the bomb visibly flies to a newly tagged player.
     this.body.x += (tx - this.body.x) * 0.3;
     this.body.y += (ty - this.body.y) * 0.3;

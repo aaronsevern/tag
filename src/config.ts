@@ -45,6 +45,18 @@ export const PORTAL_SPAWN_MAX_MS = 15000;
 export const PORTAL_RADIUS = 26;
 export const PORTAL_COLORS = [0x38d9ff, 0xff9a2e];
 
+// Potions: one at a time, removed once collected; the effect is a surprise
+export const POTION_SPAWN_MIN_MS = 8000;
+export const POTION_SPAWN_MAX_MS = 15000;
+export const POTION_RADIUS = 28;
+export const POTION_COLOR = 0xd94dff;
+export const POTION_DURATION_MS = 15000;
+export const SPEED_POTION_SCALE = 1.6;
+export const SLOW_POTION_SCALE = 0.55;
+export const JUMP_POTION_SCALE = 1.35;
+export const SLOW_FALL_SPEED = 140;
+export const GROW_POTION_SCALE = 1.6;
+
 export const PLAYER_COLORS = [0x3d8bff, 0xff4d5e, 0x3fd46b];
 export const PLAYER_NAMES = ['Blue', 'Red', 'Green'];
 

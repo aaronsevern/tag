@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PLAYER_SIZE, PORTAL_COLORS, PORTAL_RADIUS } from '../config';
+import { PLAYER_SIZE, POTION_COLOR, PORTAL_COLORS, PORTAL_RADIUS } from '../config';
 import { generateCosmeticTextures } from '../cosmetics';
 import { TRAMPOLINE_HEIGHT, TRAMPOLINE_WIDTH, WALL_TRAMPOLINE_HEIGHT, WALL_TRAMPOLINE_WIDTH } from '../level';
 
@@ -76,6 +76,22 @@ export class BootScene extends Phaser.Scene {
       g.lineStyle(2, 0xffffff, 0.8).strokeEllipse(PR, PR + 4, PR * 1.1, PR * 1.6);
       g.generateTexture(`portal${i}`, PR * 2, PR * 2 + 8);
     });
+
+    // Potion: corked round flask; every effect shares this look.
+    g.clear();
+    g.fillStyle(0xc89b5b, 1).fillRoundedRect(10, 0, 10, 6, 2);
+    g.fillStyle(0xdfe6ff, 0.9).fillRect(11, 6, 8, 8);
+    g.fillStyle(0xdfe6ff, 0.9).fillCircle(15, 23, 13);
+    g.fillStyle(POTION_COLOR, 1).fillCircle(15, 23, 10);
+    g.fillStyle(0xffffff, 0.6).fillCircle(11, 19, 3);
+    g.generateTexture('potion', 30, 36);
+
+    // Gold ring around an invincible player.
+    const RR = S / 2 + 10;
+    g.clear();
+    g.fillStyle(0xffd84a, 0.18).fillCircle(RR + 2, RR + 2, RR);
+    g.lineStyle(4, 0xffd84a, 1).strokeCircle(RR + 2, RR + 2, RR);
+    g.generateTexture('invincibleRing', RR * 2 + 4, RR * 2 + 4);
 
     g.destroy();
     this.scene.start('Menu');

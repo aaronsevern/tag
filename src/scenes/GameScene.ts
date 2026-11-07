@@ -23,6 +23,7 @@ import {
 import { Bomb } from '../objects/Bomb';
 import { Player } from '../objects/Player';
 import { Portals } from '../objects/Portals';
+import { POTION_NAMES, Potions } from '../objects/Potions';
 import { GUEST_ID, profileStore, type Profile } from '../profiles';
 import type { ResultsData } from './ResultsScene';
 
@@ -36,6 +37,7 @@ export class GameScene extends Phaser.Scene {
   private itIndex = 0;
   private bomb!: Bomb;
   private portals!: Portals;
+  private potions!: Potions;
   private state: RoundState = 'countdown';
   private remainingMs = ROUND_MS;
   private tagCooldownUntil = 0;
@@ -64,6 +66,7 @@ export class GameScene extends Phaser.Scene {
     const trampolines = this.buildTrampolines();
     const wallTrampolines = this.buildWallTrampolines();
     this.portals = new Portals(this, this.level);
+    this.potions = new Potions(this, this.level);
 
     for (let i = 0; i < this.playerCount; i++) {
       const spawn = this.level.spawns[i];
@@ -116,7 +119,10 @@ export class GameScene extends Phaser.Scene {
 
     if (this.state !== 'ended') {
       for (const p of this.players) p.update(delta, this.level.ladders);
-      if (this.state === 'playing') this.portals.update(this.time.now, this.players);
+      if (this.state === 'playing') {
+        this.portals.update(this.time.now, this.players);
+        this.potions.update(this.time.now, this.players);
+      }
       this.checkTag(time);
     }
 
@@ -252,6 +258,7 @@ export class GameScene extends Phaser.Scene {
         this.state = 'playing';
         for (const p of this.players) p.inputEnabled = true;
         this.portals.start(this.time.now);
+        this.potions.start(this.time.now);
         this.tweens.add({ targets: [label, sub], alpha: 0, delay: 500, duration: 400 });
       },
     });
@@ -260,7 +267,7 @@ export class GameScene extends Phaser.Scene {
   private checkTag(time: number): void {
     if (this.state !== 'playing' || time < this.tagCooldownUntil) return;
     const it = this.players[this.itIndex];
-    const victim = this.players.find((p) => p !== it && this.physics.overlap(it, p));
+    const victim = this.players.find((p) => p !== it && !p.hasEffect('invincible') && this.physics.overlap(it, p));
     if (victim) this.tag(it, victim, time);
   }
 
@@ -290,6 +297,7 @@ export class GameScene extends Phaser.Scene {
     for (const p of this.players) p.freeze();
     this.physics.pause();
     this.portals.stop();
+    this.potions.stop();
 
     const loser = this.players[this.itIndex];
     const x = this.bomb.x;
@@ -368,7 +376,8 @@ export class GameScene extends Phaser.Scene {
 
     this.players.forEach((p, i) => {
       const marker = i === this.itIndex ? '  💣 IT' : '';
-      this.scoreTexts[i].setText(`${p.label}: ${(p.itMs / 1000).toFixed(1)}s${marker}`);
+      const effects = p.activeEffects().map(([e, ms]) => `  ${POTION_NAMES[e]} ${Math.ceil(ms / 1000)}`).join('');
+      this.scoreTexts[i].setText(`${p.label}: ${(p.itMs / 1000).toFixed(1)}s${marker}${effects}`);
     });
   }
 }

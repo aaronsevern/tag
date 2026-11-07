@@ -7,8 +7,10 @@ import {
   FLIP_WINDOW_MS,
   GROUND_ACCEL,
   GROUND_DRAG,
+  GROW_POTION_SCALE,
   ICE_DRAG,
   JUMP_CUT_VELOCITY,
+  JUMP_POTION_SCALE,
   JUMP_VELOCITY,
   LADDER_TOP_POP,
   MAX_CHARGE,
@@ -16,8 +18,12 @@ import {
   MIN_SLIDE_CHARGE,
   PLAYER_COLORS,
   PLAYER_SIZE,
+  POTION_DURATION_MS,
   RUN_SPEED,
   SLIDE_BRAKE,
+  SLOW_FALL_SPEED,
+  SLOW_POTION_SCALE,
+  SPEED_POTION_SCALE,
   TRAMPOLINE_VELOCITY,
   WALL_BOUNCE_VX,
   WALL_BOUNCE_VY,
@@ -25,6 +31,7 @@ import {
 import type { PlayerControls } from '../controls';
 import { accessoryHeadroom, createLook, createTrail, skinTextureKey, type Look } from '../cosmetics';
 import { LADDER_WIDTH, type LadderDef } from '../level';
+import type { PotionEffect } from './Potions';
 
 export interface PlayerLook {
   name: string;
@@ -53,6 +60,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   readonly nameTag: Phaser.GameObjects.Text;
   private readonly trail: Phaser.GameObjects.Particles.ParticleEmitter | null;
   private readonly tagOffset: number;
+  private readonly invincibleRing: Phaser.GameObjects.Image;
+  /** Active potion effects and their remaining ms. */
+  private readonly effects = new Map<PotionEffect, number>();
   readonly controls: PlayerControls;
 
   inputEnabled = false;
@@ -101,38 +111,89 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.trail.setDepth(9).startFollow(this.visual);
       this.trail.emitting = false;
     }
+    this.invincibleRing = scene.add.image(x, y, 'invincibleRing').setDepth(9).setVisible(false);
 
     const onLeft = (_k: unknown, e: KeyboardEvent) => this.queuePress(-1, e.timeStamp);
     const onRight = (_k: unknown, e: KeyboardEvent) => this.queuePress(1, e.timeStamp);
-    const onUp = () => {
-      if (this.inputEnabled) this.jumpQueued = true;
-    };
+    const onUp = () => this.queueJump(false);
+    const onDown = () => this.queueJump(true);
     controls.left.on('down', onLeft);
     controls.right.on('down', onRight);
     controls.up.on('down', onUp);
+    controls.down.on('down', onDown);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       controls.left.off('down', onLeft);
       controls.right.off('down', onRight);
       controls.up.off('down', onUp);
+      controls.down.off('down', onDown);
     });
   }
 
   private queuePress(dir: number, at: number): void {
-    if (this.inputEnabled) this.pressQueue.push({ dir, at });
+    if (this.inputEnabled) this.pressQueue.push({ dir: this.hasEffect('reversed') ? -dir : dir, at });
+  }
+
+  /** The down key jumps instead of the up key while controls are reversed. */
+  private queueJump(fromDownKey: boolean): void {
+    if (this.inputEnabled && fromDownKey === this.hasEffect('reversed')) this.jumpQueued = true;
   }
 
   get onGround(): boolean {
     return this.body.blocked.down || this.body.touching.down;
   }
 
+  hasEffect(effect: PotionEffect): boolean {
+    return this.effects.has(effect);
+  }
+
+  /** Starts an effect, or restarts its timer if already active. */
+  applyEffect(effect: PotionEffect): void {
+    if (effect === 'grow' && !this.hasEffect('grow')) {
+      this.setScale(GROW_POTION_SCALE);
+      // The body grows around its centre; lift it so the feet stay above the platform.
+      this.y -= ((GROW_POTION_SCALE - 1) * PLAYER_SIZE) / 2;
+    }
+    this.effects.set(effect, POTION_DURATION_MS);
+  }
+
+  activeEffects(): [PotionEffect, number][] {
+    return [...this.effects];
+  }
+
+  private tickEffects(deltaMs: number): void {
+    for (const [effect, ms] of this.effects) {
+      if (ms > deltaMs) {
+        this.effects.set(effect, ms - deltaMs);
+        continue;
+      }
+      this.effects.delete(effect);
+      if (effect === 'grow') this.setScale(1);
+    }
+  }
+
+  get sizeScale(): number {
+    return this.hasEffect('grow') ? GROW_POTION_SCALE : 1;
+  }
+
+  private get speedScale(): number {
+    return (this.hasEffect('speed') ? SPEED_POTION_SCALE : 1) * (this.hasEffect('slow') ? SLOW_POTION_SCALE : 1);
+  }
+
+  private get runSpeed(): number {
+    return RUN_SPEED * this.speedScale;
+  }
+
   update(deltaMs: number, ladders: LadderDef[]): void {
+    this.tickEffects(deltaMs);
+
     const dt = deltaMs / 1000;
     const c = this.controls;
     const en = this.inputEnabled;
-    const left = en && c.left.isDown;
-    const right = en && c.right.isDown;
-    const up = en && c.up.isDown;
-    const down = en && c.down.isDown;
+    const reversed = this.hasEffect('reversed');
+    const left = en && (reversed ? c.right : c.left).isDown;
+    const right = en && (reversed ? c.left : c.right).isDown;
+    const up = en && (reversed ? c.down : c.up).isDown;
+    const down = en && (reversed ? c.up : c.down).isDown;
     const upJust = this.jumpQueued;
     const presses = this.pressQueue;
     this.jumpQueued = false;
@@ -161,16 +222,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     let vx = this.body.velocity.x;
     if (this.sliding) {
       vx = approach(vx, 0, (dir === -this.slideDir ? SLIDE_BRAKE : ICE_DRAG) * dt);
-      if (Math.abs(vx) <= RUN_SPEED) this.sliding = false;
+      if (Math.abs(vx) <= this.runSpeed) this.sliding = false;
     } else {
       const ground = this.onGround;
       const rate = dir !== 0 ? (ground ? GROUND_ACCEL : AIR_ACCEL) : ground ? GROUND_DRAG : AIR_DRAG;
-      vx = approach(vx, dir * RUN_SPEED, rate * dt);
+      vx = approach(vx, dir * this.runSpeed, rate * dt);
     }
     this.setVelocityX(vx);
 
     if (upJust && this.onGround) {
-      this.setVelocityY(-JUMP_VELOCITY);
+      this.setVelocityY(-JUMP_VELOCITY * (this.hasEffect('jump') ? JUMP_POTION_SCALE : 1));
       this.jumping = true;
     }
     if (this.jumping) {
@@ -181,6 +242,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.setVelocityY(-JUMP_CUT_VELOCITY);
         this.jumping = false;
       }
+    }
+    // Clamped here because setMaxVelocityY would also limit jumps and trampolines.
+    if (this.hasEffect('slowFall') && this.body.velocity.y > SLOW_FALL_SPEED) {
+      this.setVelocityY(SLOW_FALL_SPEED);
     }
   }
 
@@ -206,7 +271,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private startSlide(dir: number, charge: number): void {
     this.sliding = true;
     this.slideDir = dir;
-    this.setVelocityX(dir * RUN_SPEED * (1 + charge));
+    this.setVelocityX(dir * this.runSpeed * (1 + charge));
   }
 
   private findLadder(ladders: LadderDef[]): LadderDef | undefined {
@@ -244,7 +309,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (dir !== 0) {
       // Step off the side.
       this.stopClimb();
-      this.setVelocityX(dir * RUN_SPEED);
+      this.setVelocityX(dir * this.runSpeed);
       return;
     }
     if (up && this.body.center.y < ladder.top) {
@@ -257,7 +322,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.stopClimb();
       return;
     }
-    this.setVelocity(0, up ? -CLIMB_SPEED : down ? CLIMB_SPEED : 0);
+    const climbSpeed = CLIMB_SPEED * this.speedScale;
+    this.setVelocity(0, up ? -climbSpeed : down ? climbSpeed : 0);
   }
 
   bounce(): void {
@@ -288,7 +354,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.stopClimb();
     const vx = this.body.velocity.x;
     const vy = this.body.velocity.y;
-    this.body.reset(x, y);
+    // Portal spots assume normal size; lift a grown player clear of the platform.
+    this.body.reset(x, y - ((this.sizeScale - 1) * PLAYER_SIZE) / 2);
     this.body.setVelocity(vx, vy);
     this.scaleX_ = 0.3;
     this.scaleY_ = 0.3;
@@ -322,11 +389,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.scaleY_ += (ty - this.scaleY_) * 0.3;
 
     // Keep the bottom edge planted while squashing.
-    const yOffset = ((1 - this.scaleY_) * PLAYER_SIZE) / 2;
+    const size = this.sizeScale;
+    const yOffset = ((1 - this.scaleY_) * PLAYER_SIZE * size) / 2;
     this.visual.setPosition(this.x, this.y + yOffset);
     // Containers can't flipX; a negative scale mirrors skin and accessory together.
-    this.visual.setScale(this.lastPressDir < 0 ? -this.scaleX_ : this.scaleX_, this.scaleY_);
-    this.nameTag.setPosition(this.x, this.y - this.tagOffset);
+    this.visual.setScale((this.lastPressDir < 0 ? -this.scaleX_ : this.scaleX_) * size, this.scaleY_ * size);
+    this.nameTag.setPosition(this.x, this.y - this.tagOffset * size);
+
+    const invincible = this.hasEffect('invincible');
+    this.invincibleRing.setVisible(invincible);
+    if (invincible) {
+      this.invincibleRing
+        .setPosition(this.x, this.y)
+        .setScale(size)
+        .setAlpha(0.65 + 0.35 * Math.sin(this.scene.time.now / 120));
+    }
 
     if (this.trail) {
       const moving = Math.abs(this.body.velocity.x) > TRAIL_MIN_SPEED || Math.abs(vy) > TRAIL_MIN_SPEED;
